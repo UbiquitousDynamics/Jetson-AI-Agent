@@ -6,9 +6,9 @@ TTS_FOLDER = 'tts_audio'
 # Configuration constants for the speech recognizer
 WAKE_WORD = 'hello'
 LISTEN_TIMEOUT = 10
-WAKE_SOUND = 'sounds/wake_up.mp3'
-STOP_SOUND = 'sounds/stop.mp3'
-TIMEOUT_SOUND = 'sounds/stop.mp3'
+WAKE_SOUND = 'sounds/wake_up.wav'
+STOP_SOUND = 'sounds/stop.wav'
+TIMEOUT_SOUND = 'sounds/stop.wav'
 
 # Configuration constants for document loading
 UPLOAD_FOLDER = 'uploads'

@@ -1,7 +1,7 @@
 import logging
 from multiprocessing import Process
 from audio.tts import Pyttsx3TTS
-from audio.sound_player import SoundPlayer
+from audio.os_sound_player import SoundPlayer
 from api.api_client import APIClient
 from recognizer.speech_recognizer import SpeechRecognizer # you can switch to recognizer.speech_recognizer_pocketsphinx: lower performances
 from document.document_retriever import DocumentRetriever
