@@ -1,4 +1,4 @@
-# Jetson - AI Agent
+# Jetson - AI Agent 
 
 Jetson AI is an agent with voice powered by artificial intelligence, utilizing local LLM models to generate responses, recognize voice commands, and interact with uploaded documents totally offline.
 
