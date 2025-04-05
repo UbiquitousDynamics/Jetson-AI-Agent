@@ -26,5 +26,5 @@ elif LANGUAGE == "it":
 
 # Configuration constants for the API client
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
-MODEL_TALK = "llama3.2:1b"
-MODEL_THINK = "llama3.2:1b"
+MODEL_TALK = "Qwen/Qwen2.5-0.5B"
+MODEL_THINK = "Qwen/Qwen2.5-0.5B-Instruct"
