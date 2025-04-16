@@ -31,6 +31,9 @@ debug.log
 # MyPy cache
 .mypy_cache/
 
+# Models cache
+models_cache/
+
 # Coverage reports
 htmlcov/
 .coverage

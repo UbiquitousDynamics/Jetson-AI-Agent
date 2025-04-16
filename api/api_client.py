@@ -1,7 +1,8 @@
 import logging
 import os
+import time
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, TextIteratorStreamer
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import config
 import threading
 
@@ -9,7 +10,7 @@ class APIClient:
     def __init__(self, 
                  model_talk: str = config.MODEL_TALK, 
                  model_think: str = config.MODEL_THINK, 
-                 device: int = -1,  # -1 per CPU, 0 per la prima GPU, 1 per la seconda, ecc.
+                 device: int = 0,  # -1 per CPU, 0 per la prima GPU, 1 per la seconda, ecc.
                  cache_dir: str = "models_cache"):
         """
         Inizializza i modelli locali di Hugging Face.
@@ -24,16 +25,29 @@ class APIClient:
     def _load_model(self, model_name: str, device: int, cache_dir: str, revision: str = None):
         logging.info(f"Caricamento del modello {model_name} dalla cache: {cache_dir}")
         # Carica il modello e il tokenizer
-        model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=cache_dir, revision=revision)
-        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir, revision=revision)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            cache_dir=cache_dir,
+            revision=revision,
+            trust_remote_code=True,  
+            local_files_only=False
+
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            cache_dir=cache_dir,
+            revision=revision,
+            trust_remote_code=True,
+            local_files_only=False
+        )
         # Sposta il modello sul dispositivo specificato
         model.to(torch.device(f"cuda:{device}" if device >= 0 else "cpu"))
         logging.debug(f"Modello {model_name} caricato con successo.")
-        # Stampa le informazioni sul devicie
         logging.debug(f"Dispositivo utilizzato: {torch.cuda.get_device_name(device) if device >= 0 else 'CPU'}")
         # Crea la pipeline specificando il dispositivo
         return pipeline("text-generation", model=model, tokenizer=tokenizer, device=device)
     
+        
     def talk(self, message: str, context: str = None) -> str:
         """
         Genera una risposta per il prompt 'message', aggiungendo eventualmente il contesto.
@@ -136,51 +150,49 @@ class APIClient:
                 tts_callback(buffer.strip())
             else:
                 print(f"\n[TTS] {buffer.strip()}")
-                
+            
+
     def talk_stream_tts_phrase(self, message: str, context: str = None, tts_callback=None) -> None:
         """
-        Genera una risposta in streaming e la passa al callback TTS frase per frase.
+        Genera una risposta in streaming (simulata) e la passa al callback TTS frase per frase.
         Se tts_callback è None, stampa semplicemente l'output.
         """
         prompt = f"Context:\n{context}\n\nPrompt:\n{message}" if context else message
         logging.debug(f"Generazione del testo con il modello talk, prompt: {prompt[:50]}...")
-
+    
         # Prepara gli input per il modello (abilita truncation se necessario)
         inputs = self.talk_pipeline.tokenizer(prompt, return_tensors="pt", truncation=True)
         inputs = {k: v.to(self.talk_pipeline.model.device) for k, v in inputs.items()}
-
-        # Configura lo streamer per ricevere token in tempo reale
-        streamer = TextIteratorStreamer(self.talk_pipeline.tokenizer, skip_prompt=True, skip_special_tokens=True)
-
-        generation_kwargs = dict(
-            max_new_tokens=50,
-            streamer=streamer
-        )
-
-        # Avvia la generazione in un thread separato
-        thread = threading.Thread(target=self.talk_pipeline.model.generate, kwargs={**inputs, **generation_kwargs})
-        thread.start()
-
+    
+        # Genera l'output in maniera sincrona
+        output_tokens = self.talk_pipeline.model.generate(**inputs, max_new_tokens=50)
+        # Ottieni i token in lista
+        token_list = output_tokens[0].tolist()
+        # Decodifica token per token per simulare uno streaming
+        decoded_tokens = [self.talk_pipeline.tokenizer.decode([token], skip_special_tokens=True) for token in token_list]
+    
         sentence_buffer = ""
-        # Itera sui token man mano che vengono generati
-        for token in streamer:
+        # Itera sui token simulando lo streaming con una breve pausa
+        for token in decoded_tokens:
             print(token, end="", flush=True)
             sentence_buffer += token
-
-            # Se il buffer non è vuoto e termina con un segno di fine frase, invia la frase al TTS
+            # Se il buffer contiene una frase completa (termina con . ! ?), invia al TTS
             if sentence_buffer.strip() and sentence_buffer.strip()[-1] in {'.', '!', '?'}:
                 if tts_callback:
                     tts_callback(sentence_buffer.strip())
                 else:
                     print(f"\n[TTS] {sentence_buffer.strip()}")
-                sentence_buffer = ""  # Resetta il buffer
-
+                sentence_buffer = ""
+            # Pausa breve per simulare lo streaming (modifica il tempo in base alle tue esigenze)
+            time.sleep(0.05)
+    
         # Se alla fine rimane una frase incompleta, inviala comunque
         if sentence_buffer.strip():
             if tts_callback:
                 tts_callback(sentence_buffer.strip())
             else:
                 print(f"\n[TTS] {sentence_buffer.strip()}")
+    
     
     def think(self, message: str, context: str = None) -> str:
         """
