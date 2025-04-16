@@ -1,4 +1,7 @@
 
+# Configure ARCHITECTURE
+ARCHITECTURE= "aarch6"
+
 # Configuration constants for the speech synthesizer
 LANGUAGE = "en"
 TTS_FOLDER = 'tts_audio'
@@ -9,6 +12,11 @@ LISTEN_TIMEOUT = 10
 WAKE_SOUND = 'sounds/wake_up.wav'
 STOP_SOUND = 'sounds/stop.wav'
 TIMEOUT_SOUND = 'sounds/stop.wav'
+
+if ARCHITECTURE == "aarch6":
+   WAKE_SOUND = 'sounds/wake_up.wav'
+   STOP_SOUND = 'sounds/stop.wav'
+   TIMEOUT_SOUND = 'sounds/stop.wav'
 
 # Configuration constants for document loading
 UPLOAD_FOLDER = 'uploads'
@@ -26,5 +34,5 @@ elif LANGUAGE == "it":
 
 # Configuration constants for the API client
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
-MODEL_TALK = "Qwen/Qwen2.5-0.5B"
-MODEL_THINK = "Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_TALK = "gpt2"
+MODEL_THINK = "gpt2"

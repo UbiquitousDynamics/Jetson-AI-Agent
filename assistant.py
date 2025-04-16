@@ -111,6 +111,7 @@ class VoiceAssistant:
         
         # Call the API client with our custom callback
         self.api_client.talk_stream_tts_phrase(command, context, tts_callback=interruptible_tts_callback)
+        #self.api_client.talk(command, context)
     
     def background_listener(self):
         """
@@ -121,7 +122,7 @@ class VoiceAssistant:
             if self.speaking.is_set() and not self.listening_for_wake_word.is_set():
                 try:
                     # Only attempt to listen if not in wake word detection mode
-                    command = self.background_recognizer.listen(timeout=1)  # Short timeout for responsiveness
+                    command = self.background_recognizer.listen(timeout=3)  # Short timeout for responsiveness
                     
                     # If we got a valid command and assistant is speaking
                     if command:
