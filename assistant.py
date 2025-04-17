@@ -2,13 +2,21 @@ import logging
 import time
 from multiprocessing import Process, Event, Queue
 from threading import Thread, Lock
-from audio.tts import Pyttsx3TTS
-from audio.os_sound_player import SoundPlayer
 from api.api_client import APIClient
 from recognizer.speech_recognizer import SpeechRecognizer
 from document.document_retriever import DocumentRetriever
 import speech_recognition as sr
 import config
+
+if config.TTS == "win_tts":
+   from audio.win_tts import Pyttsx3TTS
+elif config.TTS == "tts":
+   from audio.tts import Pyttsx3TTS
+
+if config.SOUND_PLAYER == "os_sound_player":
+   from audio.os_sound_player import SoundPlayer
+elif config.SOUND_PLAYER == "sound_player":
+   from audio.sound_player import SoundPlayer
 
 class VoiceAssistant:
     def __init__(self, documents: dict = None):

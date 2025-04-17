@@ -1,5 +1,4 @@
 import logging
-import pyttsx3
 from gtts import gTTS
 import os
 import config
