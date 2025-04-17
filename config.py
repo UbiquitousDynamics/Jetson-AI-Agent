@@ -1,6 +1,6 @@
 
 # Configure ARCHITECTURE
-ARCHITECTURE= "aarch6"
+ARCHITECTURE= "aarch64"
 
 # Configuration constants for the speech synthesizer
 LANGUAGE = "en"
@@ -18,7 +18,7 @@ if ARCHITECTURE == "aarch6":
    STOP_SOUND = 'sounds/stop.wav'
    TIMEOUT_SOUND = 'sounds/stop.wav'
 
-if ARCHITECTURE == "aarch6":
+if ARCHITECTURE == "aarch64":
    WAKE_SOUND = 'sounds/wake_up.wav'
    STOP_SOUND = 'sounds/stop.wav'
    TIMEOUT_SOUND = 'sounds/stop.wav'
