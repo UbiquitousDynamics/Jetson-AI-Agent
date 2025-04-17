@@ -18,6 +18,11 @@ if ARCHITECTURE == "aarch6":
    STOP_SOUND = 'sounds/stop.wav'
    TIMEOUT_SOUND = 'sounds/stop.wav'
 
+if ARCHITECTURE == "aarch6":
+   WAKE_SOUND = 'sounds/wake_up.wav'
+   STOP_SOUND = 'sounds/stop.wav'
+   TIMEOUT_SOUND = 'sounds/stop.wav'
+
 # Configuration constants for document loading
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'txt'}
