@@ -1,276 +1,217 @@
 import logging
 import time
-from multiprocessing import Process, Event, Queue
-from threading import Thread, Lock
-from api.api_client import APIClient
+from threading import Thread, Lock, Event
+import queue
+import speech_recognition as sr
+from api.api_client_advanced import APIClient
 from recognizer.speech_recognizer import SpeechRecognizer
 from document.document_retriever import DocumentRetriever
-import speech_recognition as sr
 import config
 
-if config.TTS == "win_tts":
-   from audio.win_tts import Pyttsx3TTS
-elif config.TTS == "tts":
-   from audio.tts import Pyttsx3TTS
-
-if config.SOUND_PLAYER == "os_sound_player":
-   from audio.os_sound_player import SoundPlayer
-elif config.SOUND_PLAYER == "sound_player":
-   from audio.sound_player import SoundPlayer
+if config.OS_ == config.OS.WINDOWS:
+    from audio.win_tts import Pyttsx3TTS
+    from audio.sound_player import SoundPlayer
+else:
+    from audio.tts import Pyttsx3TTS
+    from audio.os_sound_player import SoundPlayer
 
 class VoiceAssistant:
     def __init__(self, documents: dict = None):
-        self.documents = documents
+        self.api = APIClient()
         self.tts = Pyttsx3TTS()
-        self.sound_player = SoundPlayer()
-        self.api_client = APIClient()
-        
-        # Separate recognizers for main and background listening
-        self.main_recognizer = SpeechRecognizer()
-        self.background_recognizer = SpeechRecognizer()
-        
-        self.document_retriever = DocumentRetriever(documents) if documents else None
-        
-        # Control flags for interruption handling
+        self.sound = SoundPlayer()
+        self.rec_main = SpeechRecognizer()
+        self.rec_bg = SpeechRecognizer()
+        self.doc_retriever = DocumentRetriever(documents) if documents else None
+
         self.interrupt_event = Event()
-        self.command_queue = Queue()
-        self.speaking = Event()
-        self.listening_for_wake_word = Event()
-        
-        # Mutex for audio resource access
+        self.shutdown_event = Event()
+        self.sound_queue = queue.Queue()
         self.audio_lock = Lock()
         
-    def process_command(self, command: str):
-        if not command:
-            logging.warning("No command to process.")
-            return
+        # Aggiunge storia della conversazione
+        self.conversation_history = []
         
-        context = ""
-        if self.document_retriever:
-            retrieved_docs = self.document_retriever.retrieve(command)
-            context = "\n".join([doc for _, doc in retrieved_docs])
+        # Protegge contro riconoscimenti duplicati
+        self.last_command = ""
+        self.last_command_time = 0
+        self.command_cooldown = 1.5  # secondi
+
+        # Thread per suoni
+        self.sound_thread = Thread(target=self._sound_worker, daemon=True)
+        self.sound_thread.start()
+
+    def _sound_worker(self):
+        while not self.shutdown_event.is_set():
+            try:
+                snd = self.sound_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            self.sound.play_sound(snd)
+            self.sound_queue.task_done()
+        logging.info("Sound worker terminato")
+
+    def play_sound(self, sound_id):
+        if not self.shutdown_event.is_set():
+            self.sound_queue.put_nowait(sound_id)
+
+    def listen_wake(self):
+        for _ in range(3):
+            if self.shutdown_event.is_set():
+                return False
+            try:
+                return self.rec_main.listen_for_wake_word(config.WAKE_WORD)
+            except Exception as e:
+                logging.error(f"Wake-listen error: {e}")
+                time.sleep(0.1)
+        return False
+
+    def is_duplicate_command(self, command):
+        """Verifica se un comando è un duplicato recente."""
+        current_time = time.time()
+        if (command == self.last_command and 
+            current_time - self.last_command_time < self.command_cooldown):
+            return True
         
-        # Set the speaking flag to indicate TTS is active
-        self.speaking.set()
-        
+        self.last_command = command
+        self.last_command_time = current_time
+        return False
+
+    def listen_command(self, timeout=None):
         try:
-            # If command contains 'think' use the think model, otherwise use streaming TTS
-            if "think" in command.lower() or "pensa" in command.lower():
-                response = self.api_client.think(command, context)
-                # Use the interruptible speak method
-                self.speak_with_interruption(response)
-            else:
-                # Modified stream TTS to support interruption
-                self.stream_tts_with_interruption(command, context)
-        finally:
-            # Clear the speaking flag when done
-            self.speaking.clear()
-    
-    def speak_with_interruption(self, text):
-        """
-        Speaks the text while allowing for interruption.
-        """
-        # Reset the interrupt flag
+            with self.audio_lock:
+                command = self.rec_main.listen(timeout=timeout)
+                
+                # Verifica se è un duplicato
+                if command and self.is_duplicate_command(command):
+                    logging.debug(f"Comando duplicato ignorato: {command}")
+                    return ""
+                    
+                return command
+        except sr.WaitTimeoutError:
+            return ""
+        except Exception as e:
+            logging.error(f"Listen error: {e}")
+            return ""
+
+    def process(self, command: str):
+        if not command:
+            return
+            
         self.interrupt_event.clear()
         
-        # Split the response into sentences or smaller chunks
-        chunks = self.split_into_chunks(text)
+        # Aggiunge il comando alla storia
+        self.conversation_history.append({"role": "user", "content": command})
         
-        for chunk in chunks:
-            # Check if interrupted before speaking each chunk
+        # Limita la storia a 5 scambi per non sovraccaricare il contesto
+        if len(self.conversation_history) > 10:
+            self.conversation_history = self.conversation_history[-10:]
+            
+        # Formatta la storia come contesto
+        conversation_context = "\n".join([
+            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
+            for item in self.conversation_history
+        ])
+        
+        context = ""
+        if self.doc_retriever:
+            try:
+                docs = self.doc_retriever.retrieve(command)
+                docs_context = "\n".join(d for _, d in docs)
+                if docs_context:
+                    context = f"Relevant documents:\n{docs_context}\n\nConversation history:\n{conversation_context}"
+                else:
+                    context = f"Conversation history:\n{conversation_context}"
+            except Exception as e:
+                logging.error(f"Doc retrieve error: {e}")
+                context = f"Conversation history:\n{conversation_context}"
+        else:
+            context = f"Conversation history:\n{conversation_context}"
+
+        # Crea un prompt appropriato in base al tipo di comando
+        if "think" in command.lower():
+            logging.info(f"Elaborando comando 'think': {command}")
+            resp = self.api.think(command, context)
+            self._speak_interruptible(resp)
+            # Aggiungi la risposta alla storia
+            self.conversation_history.append({"role": "assistant", "content": resp})
+        else:
+            # Per comandi normali, aggiungiamo istruzioni specifiche
+            enhanced_context = context
+            if "come stai" in command.lower():
+                enhanced_context = f"{context}\n\nIstruzioni: L'utente ha chiesto 'come stai'. Rispondi con uno stato d'animo e non con una definizione di parole."
+                
+            logging.info(f"Elaborando comando: {command}")
+            
+            # Cattura la risposta per aggiungerla alla storia
+            response_buffer = []
+            
+            def capture_response(chunk):
+                if self.interrupt_event.is_set():
+                    return False
+                response_buffer.append(chunk)
+                self.tts.speak(chunk)
+                return True
+                
+            self.api.talk_stream_tts_phrase(
+                command,
+                enhanced_context,
+                tts_callback=capture_response,
+                command_callback=lambda c: self.interrupt_event.set(),
+            )
+            
+            # Aggiungi la risposta completa alla storia
+            full_response = " ".join(response_buffer)
+            if full_response:
+                self.conversation_history.append({"role": "assistant", "content": full_response})
+
+    def _tts_callback(self, chunk):
+        if self.interrupt_event.is_set():
+            return False
+        self.tts.speak(chunk)
+        return True
+
+    def _speak_interruptible(self, text):
+        # Speaks in chunk di frasi
+        for sent in text.split(". "):
             if self.interrupt_event.is_set():
-                logging.info("Speech interrupted.")
                 break
-            
-            # Speak the current chunk
-            self.tts.speak(chunk)
-    
-    def split_into_chunks(self, text, max_length=150):
-        """
-        Split text into smaller, sentence-aware chunks for better interruption handling.
-        """
-        # Simple implementation - can be improved with sentence detection
-        sentences = text.split('. ')
-        chunks = []
-        current_chunk = ""
-        
-        for sentence in sentences:
-            if len(current_chunk) + len(sentence) <= max_length:
-                current_chunk += sentence + ". "
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk.strip())
-                current_chunk = sentence + ". "
-        
-        if current_chunk:
-            chunks.append(current_chunk.strip())
-        
-        return chunks
-    
-    def stream_tts_with_interruption(self, command, context):
-        """
-        Streams TTS response with interruption support.
-        """
-        # Custom callback that checks for interruption
-        def interruptible_tts_callback(phrase):
-            if not self.interrupt_event.is_set():
-                self.tts.speak(phrase)
-            return not self.interrupt_event.is_set()  # Return False to stop streaming if interrupted
-        
-        # Call the API client with our custom callback
-        self.api_client.talk_stream_tts_phrase(command, context, tts_callback=interruptible_tts_callback)
-        #self.api_client.talk(command, context)
-    
-    def background_listener(self):
-        """
-        Continuous background listening process that can detect commands
-        even while TTS is speaking.
-        """
-        while True:
-            if self.speaking.is_set() and not self.listening_for_wake_word.is_set():
-                try:
-                    # Only attempt to listen if not in wake word detection mode
-                    command = self.background_recognizer.listen(timeout=3)  # Short timeout for responsiveness
-                    
-                    # If we got a valid command and assistant is speaking
-                    if command:
-                        logging.info(f"Background listener detected command: {command}")
-                        
-                        # Check if it's an interruption command
-                        if any(keyword in command.lower() for keyword in ["stop", "wait", "interrupt", "fermati", "basta"]):
-                            # Signal interruption
-                            self.interrupt_event.set()
-                            self.play_sound_async(config.INTERRUPT_SOUND)
-                        
-                        # Add the command to the queue for processing after current speech ends
-                        self.command_queue.put(command)
-                
-                except sr.WaitTimeoutError:
-                    # Just continue listening on timeout
-                    pass
-                except Exception as e:
-                    logging.error(f"Error in background listener: {e}")
-                    # Add a small delay to prevent rapid error loops
-                    time.sleep(0.5)
-            else:
-                # If not speaking or we're in wake word mode, just sleep briefly
-                time.sleep(0.1)
-    
-    def play_sound_async(self, sound_file: str):
-        """
-        Plays a sound in a separate process so that it doesn't block the main thread.
-        """
-        process = Process(target=self.sound_player.play_sound, args=(sound_file,))
-        process.start()
-    
-    def listen_with_recovery(self, timeout=None):
-        """
-        Listen for commands with error recovery.
-        """
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                with self.audio_lock:
-                    return self.main_recognizer.listen(timeout=timeout)
-            except sr.WaitTimeoutError:
-                # This is an expected exception when timeout occurs
-                return ""
-            except Exception as e:
-                logging.error(f"Error during listening: {e}")
-                retry_count += 1
-                time.sleep(0.5)  # Brief pause before retry
-                
-                # Recreate the recognizer if we're having persistent issues
-                if retry_count == max_retries - 1:
-                    logging.info("Recreating speech recognizer due to persistent errors")
-                    self.main_recognizer = SpeechRecognizer()
-        
-        return ""  # Return empty string if all retries fail
-    
-    def listen_for_wake_word_safely(self, wake_word):
-        """
-        Listen for wake word with error recovery.
-        """
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                self.listening_for_wake_word.set()
-                with self.audio_lock:
-                    result = self.main_recognizer.listen_for_wake_word(wake_word)
-                self.listening_for_wake_word.clear()
-                return result
-            except Exception as e:
-                logging.error(f"Error listening for wake word: {e}")
-                retry_count += 1
-                time.sleep(0.5)  # Brief pause before retry
-                
-                # Recreate the recognizer if we're having persistent issues
-                if retry_count == max_retries - 1:
-                    logging.info("Recreating speech recognizer due to persistent errors")
-                    self.main_recognizer = SpeechRecognizer()
-                
-                self.listening_for_wake_word.clear()
-        
-        return False  # Return False if all retries fail
-    
+            self.tts.speak(sent.strip())
+
     def run(self):
-        # Start the background listener thread
-        listener_thread = Thread(target=self.background_listener, daemon=True)
-        listener_thread.start()
-        
-        # Speak a welcome message before starting to listen for the wake word
-        welcome_message = f"Hi there! I'm {config.WAKE_WORD}"
-        self.tts.speak(welcome_message)
-        logging.info("Welcome message delivered. Waiting for wake word.")
-        
-        while True:
-            try:
-                # Wait for the wake word
-                if self.listen_for_wake_word_safely(config.WAKE_WORD):
-                    self.play_sound_async(config.WAKE_SOUND)
-                    logging.info("Entering command mode.")
-                    
-                    # Enter command mode: continuously listen for commands
-                    command_mode_active = True
-                    while command_mode_active:
-                        try:
-                            # Check if we have a queued command from the background listener
-                            if not self.command_queue.empty():
-                                command = self.command_queue.get()
-                                logging.info(f"Processing queued command: {command}")
-                            else:
-                                command = self.listen_with_recovery(timeout=config.LISTEN_TIMEOUT)
-                            
-                            # If no command was recognized or stop command detected
-                            if not command:
-                                logging.info("No command received within timeout.")
-                                self.play_sound_async(config.TIMEOUT_SOUND)
-                                command_mode_active = False
-                            elif any(word in command.lower() for word in ["stop", "exit", "quit", "termina"]):
-                                self.play_sound_async(config.STOP_SOUND)
-                                logging.info("'Stop' command detected, exiting command mode.")
-                                command_mode_active = False
-                            else:
-                                # Process the received command using the APIClient
-                                self.process_command(command)
-                            
-                        except sr.WaitTimeoutError:
-                            logging.info("No command received within timeout.")
-                            self.play_sound_async(config.TIMEOUT_SOUND)
-                            # Exit command mode after a timeout
-                            command_mode_active = False
-                        
-                        # Add a small delay between command processing
-                        time.sleep(0.1)
+        logging.info("Assistant avviato, in attesa di wake word")
+        while not self.shutdown_event.is_set():
+            if self.listen_wake():
+                logging.info("Wake word detected!")
+                self.play_sound(config.WAKE_SOUND)
                 
-                # Brief pause before listening for wake word again
+                # Cooldown dopo il rilevamento del wake word
                 time.sleep(0.5)
-            
-            except Exception as e:
-                logging.error(f"Error in the main loop: {e}")
-                # Add recovery mechanism
-                time.sleep(1)  # Pause before retrying
+                
+                while not self.shutdown_event.is_set():
+                    logging.info("Listening...")
+                    cmd = self.listen_command(config.LISTEN_TIMEOUT)
+                    
+                    if not cmd:
+                        logging.info("Timeout o comando vuoto")
+                        self.play_sound(config.TIMEOUT_SOUND)
+                        break
+                        
+                    if any(k in cmd.lower() for k in ("stop", "exit", "quit", "termina")):
+                        logging.info(f"Comando di uscita ricevuto: {cmd}")
+                        self.play_sound(config.STOP_SOUND)
+                        break
+                        
+                    logging.info(f"Processando comando: '{cmd}'")
+                    self.process(cmd)
+                    
+                    # Aggiungi un cooldown dopo l'elaborazione
+                    time.sleep(1.0)
+                    
+            time.sleep(0.1)
+        self.shutdown()
+
+    def shutdown(self):
+        logging.info("Shutting down Assistant")
+        self.shutdown_event.set()
+        self.sound_thread.join(timeout=1.0)
