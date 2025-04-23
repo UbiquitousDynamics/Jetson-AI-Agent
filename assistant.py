@@ -5,7 +5,9 @@ import queue
 import speech_recognition as sr
 from api.api_client_advanced import APIClient
 from recognizer.speech_recognizer import SpeechRecognizer
-from document.document_retriever import DocumentRetriever
+# from document.document_retriever import DocumentRetriever
+from document.rag_document_retriver import RagDocumentRetriever
+import speech_recognition as sr
 import config
 
 if config.OS_ == config.OS.WINDOWS:
@@ -22,7 +24,7 @@ class VoiceAssistant:
         self.sound = SoundPlayer()
         self.rec_main = SpeechRecognizer()
         self.rec_bg = SpeechRecognizer()
-        self.doc_retriever = DocumentRetriever(documents) if documents else None
+        self.doc_retriever = RagDocumentRetriever(documents) if documents else None
 
         self.interrupt_event = Event()
         self.shutdown_event = Event()

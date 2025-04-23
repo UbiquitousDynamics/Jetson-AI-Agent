@@ -10,7 +10,7 @@ class APIClient:
     def __init__(self, 
                  model_talk: str = config.MODEL_TALK, 
                  model_think: str = config.MODEL_THINK, 
-                 device: int = 0,  # -1 per CPU, 0 per la prima GPU, 1 per la seconda, ecc.
+                 device: int = -1,  # -1 per CPU, 0 per la prima GPU, 1 per la seconda, ecc.
                  cache_dir: str = "models_cache"):
         """
         Inizializza i modelli locali di Hugging Face.
