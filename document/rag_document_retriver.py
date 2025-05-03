@@ -14,7 +14,7 @@ class RagDocumentRetriever:
     def __init__(
         self,
         documents: dict,
-        model_name: str = 'BAAI/bge-m3',
+        model_name: str = 'BAAI/bge-base-en-v1.5',
         chunks_cache: str = 'chunks.pkl',
         embeddings_path: str = 'embeddings.npy',
         sentences_path: str = 'sentences.txt',

@@ -7,7 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 
 class RagSystem:
-    def __init__(self, model_name='BAAI/bge-m3', use_fp16=True):
+    def __init__(self, model_name='BAAI/bge-base-en-v1.5', use_fp16=True):
         self.model = BGEM3FlagModel(model_name, use_fp16=use_fp16)
         self.embedding_matrix = None
         self.data = None  # Original sentences

@@ -16,3 +16,5 @@ torchaudio
 vosk
 transformers
 sentence-transformers
+FlagEmbedding
+matplotlib
