@@ -11,7 +11,7 @@ class APIClient:
                  model_talk: str = config.MODEL_TALK, 
                  model_think: str = config.MODEL_THINK, 
                  device: int = -1,  # -1 per CPU, 0 per la prima GPU, 1 per la seconda, ecc.
-                 cache_dir: str = "models_cache"):
+                 cache_dir: str = ".models_cache"):
         """
         Inizializza i modelli locali di Hugging Face.
         Se il modello non è presente nella cache, verrà scaricato automaticamente.

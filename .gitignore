@@ -32,7 +32,10 @@ debug.log
 .mypy_cache/
 
 # Models cache
-models_cache/
+.models_cache/
+
+# RAG cache
+.rag_cache/
 
 # Coverage reports
 htmlcov/

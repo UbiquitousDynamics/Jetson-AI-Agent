@@ -13,7 +13,7 @@ class DocumentRetriever:
         except Exception as e:
             logging.error(f"Error initializing DocumentRetriever: {e}")
 
-    def retrieve(self, query: str, top_k: int = 2):
+    def retrieve(self, query: str, top_k: int = 1):
         try:
             # Transform query and compute cosine similarity with document matrix
             query_vector = self.tfidf_vectorizer.transform([query])

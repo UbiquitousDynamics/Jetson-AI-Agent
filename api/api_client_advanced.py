@@ -21,7 +21,7 @@ class APIClient:
         model_talk: str = config.MODEL_TALK,
         model_think: str = config.MODEL_THINK,
         device: int = int(config.DEVICE) if isinstance(config.DEVICE, (str, int, float)) else -1,  # Default to -1 if invalid
-        cache_dir: str = "models_cache",
+        cache_dir: str = ".models_cache",
         revision_talk: str = None,
         revision_think: str = None,
     ):
