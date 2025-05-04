@@ -17,7 +17,7 @@ class RagDocumentRetriever:
         self,
         documents: Dict[str, str],
         model_name: str = 'BAAI/bge-base-en-v1.5',
-        cache_dir: str = './rag_cache',
+        cache_dir: str = './.rag_cache',
         chunks_cache: str = 'chunks.pkl',
         embeddings_path: str = 'embeddings.npy',
         sentences_path: str = 'sentences.txt',
