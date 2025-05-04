@@ -86,6 +86,50 @@ class APIClient:
             if callback:
                 callback(cmd)
 
+    def talk_direct_tts(
+        self,
+        message: str,
+        tts_callback=None,
+        command_callback=None,
+    ) -> None:
+        """
+        Versione semplificata che usa solo TTS senza LLM.
+        Divide il testo in frasi e le pronuncia sequenzialmente.
+        """
+        self.stop_event.clear()
+        
+        # Avvia il listener per i comandi di interruzione
+        listener = threading.Thread(
+            target=self._listener,
+            args=(command_callback,),
+            daemon=True
+        )
+        listener.start()
+    
+        # Regex per dividere il testo in frasi
+        sentence_pattern = re.compile(r'[.!?]+[\s\n]+|[.!?]+$')
+        
+        # Dividi il messaggio in frasi
+        sentences = sentence_pattern.split(message.strip())
+        
+        for sentence in sentences:
+            if self.stop_event.is_set():
+                logging.info("TTS interrotto")
+                break
+                
+            # Pulisci e valida la frase
+            sentence = sentence.strip()
+            if len(sentence.split()) > 2:  # Pronuncia solo frasi con almeno 3 parole
+                if tts_callback:
+                    logging.debug(f"TTS in esecuzione per: {sentence}")
+                    if tts_callback(sentence) is False:
+                        self.stop_event.set()
+                        break
+                else:
+                    print(f"[TTS] {sentence}")
+                        
+        logging.debug("TTS completato")
+
     def talk_stream_tts_phrase(
         self,
         message: str,

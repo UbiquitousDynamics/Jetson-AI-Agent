@@ -124,52 +124,54 @@ class VoiceAssistant:
                     rag_docs = self.doc_retriever.retrieve(command)
                     if rag_docs:
                         logging.info(f"RAG found {len(rag_docs)} relevant documents")
-                        # Log dei primi 100 caratteri di ogni documento per debug
-                        for i, (_, doc) in enumerate(rag_docs):
-                            logging.debug(f"RAG doc {i}: {doc[:100]}...")
-                        docs_context = "\n".join(d for _, d in rag_docs)
-                        context = f"Relevant documents:\n{docs_context}\n"
+                        # Prendi solo il testo (secondo elemento della tupla)
+                        docs_text = "\n".join(testo for _, testo, _ in rag_docs)
+                        self.api.talk_direct_tts(
+                            docs_text,
+                            tts_callback=lambda text: self.tts.speak(text)
+                        )
+                        self.conversation_history.append({"role": "assistant", "content": docs_text})
                 except Exception as e:
                     logging.error(f"RAG retrieval error: {e}")
-            
-            # Aggiunge la storia della conversazione
-            conversation_context = "\n".join([
-                f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
-                for item in self.conversation_history[-10:]
-            ])
-            context += f"\nConversation history:\n{conversation_context}"
-            
-            # Processa il comando
-            if "think" in command.lower():
-                logging.info(f"Processing 'think' command with {len(rag_docs)} RAG docs")
-                resp = self.api.think(command, context)
-                self._speak_interruptible(resp)
-                self.conversation_history.append({"role": "assistant", "content": resp})
             else:
-                logging.info(f"Processing streaming command with {len(rag_docs)} RAG docs")
-                response_buffer = []
+                # Aggiunge la storia della conversazione
+                #conversation_context = "\n".join([
+                #    f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
+                #    for item in self.conversation_history[-10:]
+                #])
+                #context += f"\nConversation history:\n{conversation_context}"
                 
-                def capture_response(chunk):
-                    if self.interrupt_event.is_set():
-                        return False
-                    # Log della risposta per debug
-                    logging.debug(f"TTS chunk: {chunk}")
-                    response_buffer.append(chunk)
-                    self.tts.speak(chunk)
-                    return True
+                # Processa il comando
+                if "think" in command.lower():
+                    logging.info(f"Processing 'think' command with {len(rag_docs)} RAG docs")
+                    resp = self.api.think(command, context)
+                    self._speak_interruptible(resp)
+                    self.conversation_history.append({"role": "assistant", "content": resp})
+                else:
+                    logging.info(f"Processing streaming command with {len(rag_docs)} RAG docs")
+                    response_buffer = []
                     
-                self.api.talk_stream_tts_phrase(
-                    command,
-                    context,
-                    tts_callback=capture_response,
-                    command_callback=lambda c: self.interrupt_event.set()
-                )
-                
-                full_response = " ".join(response_buffer)
-                if full_response:
-                    self.conversation_history.append(
-                        {"role": "assistant", "content": full_response}
+                    def capture_response(chunk):
+                        if self.interrupt_event.is_set():
+                            return False
+                        # Log della risposta per debug
+                        logging.debug(f"TTS chunk: {chunk}")
+                        response_buffer.append(chunk)
+                        self.tts.speak(chunk)
+                        return True
+                        
+                    self.api.talk_stream_tts_phrase(
+                        command,
+                        context,
+                        tts_callback=capture_response,
+                        command_callback=lambda c: self.interrupt_event.set()
                     )
+                    
+                    full_response = " ".join(response_buffer)
+                    if full_response:
+                        self.conversation_history.append(
+                            {"role": "assistant", "content": full_response}
+                        )
         finally:
             self.speaking.clear()
 

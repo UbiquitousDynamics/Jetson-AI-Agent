@@ -21,9 +21,9 @@ class RagDocumentRetriever:
         chunks_cache: str = 'chunks.pkl',
         embeddings_path: str = 'embeddings.npy',
         sentences_path: str = 'sentences.txt',
-        chars_per_chunk: int = 1000,
-        overlap: int = 100,
-        max_chunks: int = 300,
+        chars_per_chunk: int = 5000,
+        overlap: int = 200,
+        max_chunks: int = 500,
         use_fp16: bool = True
     ):
         """
@@ -112,13 +112,28 @@ class RagDocumentRetriever:
             return []
             
         try:
+            print(f"[RAG] ---------------------------------------------------Esecuzione retrieval per la query: {query}")
             start_time = time.time()
             # Ottieni i risultati dalla ricerca
             results = self.rag_system.search(query, top_k=top_k)
+            print(f"[DEBUG] Risultati ottenuti (totale {len(results)}): {results}")
             
             # Filtra per punteggio minimo e formatta i risultati
             filtered_results = []
-            for idx, score in results:
+            for item in results:
+                # Aggiungi una stampa per vedere quanti valori contiene 'item'
+                if hasattr(item, '__len__'):
+                    print(f"[DEBUG] Elaborazione item: {item} con {len(item)} valori")
+                else:
+                    print(f"[DEBUG] Elaborazione item senza attributo len: {item}")
+                
+                # Prova ad estrarre i primi due valori
+                try:
+                    idx, score = item[:2]
+                except Exception as inner_e:
+                    print(f"[DEBUG] Errore durante l'unpacking dell'item {item}: {inner_e}")
+                    continue
+                
                 if score >= min_score:
                     # Estrai l'ID del documento dal testo se presente
                     text = self.rag_system.data[idx]
@@ -141,7 +156,6 @@ class RagDocumentRetriever:
         except Exception as e:
             logging.error(f"[RAG] Errore durante il retrieval: {e}")
             return []
-            
     def visualize_query_space(self, query: str, perplexity: int = 5, 
                              save_path: Optional[str] = None) -> None:
         """
